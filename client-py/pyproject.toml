@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ncc"
+version = "0.1.0"
+description = "Nysiris Chat Commander: native privacy-clean desktop chat client"
+requires-python = ">=3.12,<3.14"
+dependencies = ["PySide6-Essentials>=6.8,<7"]
+readme = "README.md"
+license = { text = "Apache-2.0" }
+
+[project.urls]
+Repository = "https://github.com/TribeWarez/ncc"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4.4", "ruff>=0.6"]
+
+[project.scripts]
+ncc = "ncc.main:main"
+
+[tool.setuptools.packages.find]
+include = ["ncc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

@@ -1,0 +1,13 @@
+/target
+**/target
+/client-py/.venv
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+/dist/
+**/*.enc
+**/dev-master.key
+**/history/
+.DS_Store

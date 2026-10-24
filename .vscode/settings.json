@@ -1,0 +1,17 @@
+{
+  "files.exclude": {
+    "target": "explorerExcludedFiles",
+    "**/target": "explorerExcludedFiles",
+    "client-py/.venv": "explorerExcludedFiles",
+    "**/__pycache__/": "explorerExcludedFiles",
+    "*.py[cod]": "explorerExcludedFiles",
+    "*.egg-info/": "explorerExcludedFiles",
+    ".pytest_cache/": "explorerExcludedFiles",
+    ".ruff_cache/": "explorerExcludedFiles",
+    "dist/": "explorerExcludedFiles",
+    "**/*.enc": "explorerExcludedFiles",
+    "**/dev-master.key": "explorerExcludedFiles",
+    "**/history/": "explorerExcludedFiles",
+    ".DS_Store": "explorerExcludedFiles"
+  }
+}

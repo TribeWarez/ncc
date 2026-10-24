@@ -1,0 +1,29 @@
+[package]
+name = "ncc-daemon"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/TribeWarez/ncc"
+publish = false
+description = "JSON-RPC sidecar for the NCC PySide6 client. Owns identity, crypto, history, and transport."
+
+[features]
+default = []
+nym = ["nysiris-transport-nym/nym"]
+
+[dependencies]
+# Nysiris-Core is the `core/` git submodule. Switch these to crates.io versions
+# when the first Core release is published.
+nysiris-core = { path = "../core/crates/nysiris-core" }
+nysiris-chat-core = { path = "../core/crates/nysiris-chat-core" }
+nysiris-chat-history = { path = "../core/crates/nysiris-chat-history" }
+nysiris-transport-nym = { path = "../core/crates/nysiris-transport-nym" }
+nysiris-testkit = { path = "../core/crates/nysiris-testkit" }
+hex = "0.4"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

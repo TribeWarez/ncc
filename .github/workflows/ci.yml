@@ -1,0 +1,46 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: fmt + clippy + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Qt runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0
+      - name: Create Python environment
+        run: python -m venv client-py/.venv
+      - name: Install client
+        working-directory: client-py
+        run: .venv/bin/python -m pip install -e ".[dev]"
+      - name: Run gate
+        run: python scripts/check.py
+
+  nym-transport:
+    name: Nym transport compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check nym feature
+        working-directory: ncc-daemon
+        run: cargo check --features nym
