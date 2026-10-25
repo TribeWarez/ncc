@@ -1,0 +1,82 @@
+name: Release
+
+# Cut a Windows release by tagging the client version:
+#   git tag -a v0.1.1 -m "v0.1.1" && git push origin v0.1.1
+# The tag must match `version` in client-py/pyproject.toml.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ncc-daemon -> target
+
+      - name: Verify tag matches client version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $pyproject = Get-Content client-py/pyproject.toml -Raw
+          if ($pyproject -notmatch '(?m)^version = "([^"]+)"') {
+            throw "could not read version from client-py/pyproject.toml"
+          }
+          $version = $Matches[1]
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          if ($tag -ne $version) {
+            throw "tag v$tag does not match client-py version $version"
+          }
+          Write-Host "tag v$tag matches client-py version $version"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e client-py
+          python -m pip install pyinstaller
+
+      - name: Build Windows zip + checksums
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Python python
+
+      - name: Show artifacts
+        shell: pwsh
+        run: Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncc-windows
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          generate_release_notes: true

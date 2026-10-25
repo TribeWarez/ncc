@@ -29,6 +29,21 @@ Nysiris PWA ──wire──► Nysiris services ──► Nysiris-Core
 NCC (PySide6 + ncc-daemon) ───────────────────┘
 ```
 
+## Download (Windows)
+
+Prebuilt bundles are attached to
+[Releases](https://github.com/TribeWarez/ncc/releases). Download
+`ncc-<version>-windows-x64.zip`, verify it against `SHA256SUMS.txt`, extract it
+anywhere, and run `ncc.exe`.
+
+- The first launch uses the in-memory transport — no network, no account.
+- Real mixnet: `ncc.exe --transport nym`. The bundled `ncc-daemon.exe` is built
+  with the Nym feature, so no Rust toolchain is needed.
+- Data (identity, contacts, encrypted history) lives in `%APPDATA%\NCC`.
+  Delete that folder to reset.
+- The binaries are not code-signed yet, so SmartScreen/Defender may warn on the
+  first run.
+
 ## What works now (Phase 0)
 
 - Rust `Nysiris-Core` crates:
@@ -134,6 +149,20 @@ cd ..\client-py
 Or run `python scripts/check.py` from the repo root (cross-platform), or
 `.\scripts\check.ps1` on Windows. Add `--nym` / `-Nym` to compile the heavy real
 Nym transport as part of the gate.
+
+## Building a release
+
+The Windows bundle is reproducible locally:
+
+```powershell
+.\scripts\build-release.ps1
+```
+
+It builds `ncc-daemon.exe --release --features nym`, runs PyInstaller over
+`packaging/ncc.spec`, and writes
+`dist/ncc-<version>-windows-x64.zip` plus `dist/SHA256SUMS.txt`. The version
+comes from `client-py/pyproject.toml`; tagging `v<version>` builds and publishes
+the same artifact from `.github/workflows/release.yml`.
 
 ## Why no chat service?
 

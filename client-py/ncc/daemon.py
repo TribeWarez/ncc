@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from .rpc import RpcClient
 
 
 def repo_root() -> Path:
+    # Packaged builds (PyInstaller) place ncc-daemon.exe next to ncc.exe.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     # client-py/ncc/daemon.py -> client-py -> NCC
     return Path(__file__).resolve().parents[2]
 
@@ -26,6 +30,13 @@ def find_daemon(explicit: str | None = None) -> Path:
     if env_path:
         candidates.append(Path(env_path))
     root = repo_root()
+    for name in ("ncc-daemon.exe", "ncc-daemon"):
+        candidates.append(root / name)
+    # PyInstaller onedir keeps bundled binaries in `_internal` (sys._MEIPASS).
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        for name in ("ncc-daemon.exe", "ncc-daemon"):
+            candidates.append(Path(meipass) / name)
     for profile in ("debug", "release"):
         for name in ("ncc-daemon.exe", "ncc-daemon"):
             candidates.append(root / "ncc-daemon" / "target" / profile / name)

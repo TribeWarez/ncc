@@ -51,6 +51,21 @@ the roster and open chat windows.
 .\.venv\Scripts\python -m ruff check .
 ```
 
+## Packaged Windows build
+
+The release workflow turns this client into `ncc.exe` with the daemon bundled
+next to it:
+
+```powershell
+# from the repo root
+.\scripts\build-release.ps1
+```
+
+That writes `dist/ncc-<version>-windows-x64.zip` (and `SHA256SUMS.txt`). The
+bundle uses `packaging/ncc.spec`; `ncc.daemon.find_daemon` looks for
+`ncc-daemon.exe` beside the frozen executable, so no `NCC_DAEMON` path is
+needed. Run `ncc.exe --transport nym` for the real mixnet.
+
 Live mainnet tests (need a feature-built daemon and network):
 
 ```powershell
