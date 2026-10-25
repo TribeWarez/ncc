@@ -7,7 +7,7 @@ service.
 NCC is a client. Nysiris remains the PWA/Electron/Tauri product for portals,
 social/timeline, and service hosting. The shared Rust layer is
 [`Nysiris-Core`](https://github.com/TribeWarez/nysiris-core), pinned here as
-the `core/` submodule (`v0.1.2`) and published on crates.io.
+the `core/` submodule (`v0.1.3`) and published on crates.io.
 
 | Crate | crates.io | Docs |
 |---|---|---|
