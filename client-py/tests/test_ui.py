@@ -2,7 +2,17 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from ncc import style  # noqa: E402
+from ncc.windows.dialogs import SettingsDialog  # noqa: E402
 from ncc.windows.roster import RosterWindow  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _default_theme(qapp):
+    style.apply_theme(qapp, style.DEFAULT_THEME)
+    yield
+    style.apply_theme(qapp, style.DEFAULT_THEME)
+
 
 CONTACT = {
     "petname": "Alice",
@@ -154,3 +164,73 @@ def test_opening_a_chat_creates_a_native_window(qtbot):
     chat = window.chats[contact.pubkey]
     assert chat.windowTitle().startswith("Alice")
     chat.close()
+
+
+def test_default_theme_is_cyborg_98_with_themed_logo(qapp):
+    assert style.DEFAULT_THEME == "cyborg_98"
+    assert style.current().key == "cyborg_98"
+    for key in style.THEMES:
+        pixmap = style.logo_pixmap(key, 88)
+        assert not pixmap.isNull(), f"missing logo for {key}"
+
+
+def test_roster_shows_the_themed_logo(qtbot):
+    rpc = FakeRpc()
+    window = RosterWindow(rpc, {"transport": "memory", "data_dir": "C:/tmp"}, demo=False)
+    qtbot.addWidget(window)
+    window.show()
+    pixmap = window.logo.pixmap()
+    assert pixmap is not None
+    assert not pixmap.isNull()
+    assert window.logo.toolTip().startswith("Cyborg 98")
+
+
+def test_theme_setting_applies_and_persists(qtbot, tmp_path):
+    rpc = FakeRpc()
+    dialog = SettingsDialog(
+        rpc,
+        {"transport": "memory", "data_dir": str(tmp_path)},
+        {},
+        data_dir=str(tmp_path),
+    )
+    qtbot.addWidget(dialog)
+    index = dialog.theme_combo.findData("flame_fury_2003")
+    assert index >= 0
+    dialog.theme_combo.setCurrentIndex(index)
+
+    assert style.current().key == "flame_fury_2003"
+    assert style.load_saved_theme(tmp_path) == "flame_fury_2003"
+    assert "theme" in (tmp_path / style.SETTINGS_FILE).read_text(encoding="utf-8")
+
+
+def test_theme_preference_round_trips(tmp_path):
+    assert style.load_saved_theme(tmp_path) == style.DEFAULT_THEME
+    assert style.save_theme(tmp_path, "aero_2007") is True
+    assert style.load_saved_theme(tmp_path) == "aero_2007"
+    assert style.save_theme(tmp_path, "not-a-theme") is False
+    assert style.load_saved_theme(tmp_path) == "aero_2007"
+    assert not (tmp_path / f"{style.SETTINGS_FILE}.tmp").exists()
+
+
+def test_demo_transport_is_visibly_flagged(qtbot):
+    rpc = FakeRpc()
+    window = RosterWindow(rpc, {"transport": "memory", "data_dir": "C:/tmp"}, demo=False)
+    qtbot.addWidget(window)
+    window.show()
+    assert window.demo_transport is True
+    assert window.demo_banner.isVisible()
+
+    contact = window.model.row_at(window.model.index(0, 0)).contact
+    window.open_chat(contact)
+    qtbot.waitUntil(lambda: contact.pubkey in window.chats)
+    assert "Demo transport" in window.chats[contact.pubkey].statusBar().currentMessage()
+    window.chats[contact.pubkey].close()
+
+
+def test_nym_transport_does_not_show_the_demo_banner(qtbot):
+    rpc = FakeRpc()
+    window = RosterWindow(rpc, {"transport": "nym", "data_dir": "C:/tmp"}, demo=False)
+    qtbot.addWidget(window)
+    window.show()
+    assert window.demo_transport is False
+    assert window.demo_banner.isHidden()

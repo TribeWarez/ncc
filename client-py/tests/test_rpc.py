@@ -49,3 +49,17 @@ def test_rpc_round_trip_and_error():
     finally:
         client.close()
     assert not client.alive
+
+
+def test_stderr_is_bounded_and_a_bad_sink_cannot_stop_the_reader():
+    def boom(_line: str) -> None:
+        raise RuntimeError("no stderr in a windowed build")
+
+    client = RpcClient([sys.executable, "-c", "pass"], on_stderr=boom)
+    for index in range(300):
+        client._emit_stderr(f"line {index}")
+
+    lines = client.stderr_lines
+    assert len(lines) == 200
+    assert lines[0] == "line 100"
+    assert lines[-1] == "line 299"

@@ -15,7 +15,8 @@ a = Analysis(
     [str(ROOT / "packaging" / "entry.py")],
     pathex=[str(CLIENT)],
     binaries=[],
-    datas=[],
+    # Theme artwork is resolved from <bundle>/res at runtime.
+    datas=[(str(ROOT / "res"), "res")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -27,9 +27,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import style
 from ..models import Contact, GroupSummary, Message
 from ..rpc import RpcClient, RpcError
-from ..style import ACCENT_DARK, LINE, MUTED, SURFACE_2
 from .chat import Composer, MessageDelegate, MessageListModel
 
 
@@ -79,23 +79,23 @@ class GroupDelegate(QStyledItemDelegate):
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         if selected or hovered:
-            painter.setPen(QPen(QColor(LINE), 1))
-            painter.setBrush(QColor(SURFACE_2))
+            painter.setPen(QPen(QColor(style.LINE), 1))
+            painter.setBrush(QColor(style.SURFACE_2))
             painter.drawRoundedRect(rect, 4, 4)
         if selected:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(ACCENT_DARK))
+            painter.setBrush(QColor(style.ACCENT_DARK))
             painter.drawRect(QRect(rect.left(), rect.top() + 6, 3, rect.height() - 12))
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#ff7300"))
+        painter.setBrush(QColor(style.ACCENT))
         painter.drawEllipse(rect.left() + 12, rect.top() + 15, 7, 7)
 
         name_font = QFont(option.font)
         name_font.setBold(True)
         painter.setFont(name_font)
-        painter.setPen(QColor("#f2f3f5"))
+        painter.setPen(QColor(style.INK))
         painter.drawText(
             QRect(rect.left() + 28, rect.top() + 7, rect.width() - 80, 20),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -107,7 +107,7 @@ class GroupDelegate(QStyledItemDelegate):
         time_font = QFont(option.font)
         time_font.setPointSize(8)
         painter.setFont(time_font)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(style.MUTED))
         painter.drawText(
             QRect(rect.right() - 66, rect.top() + 8, 60, 18),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -117,7 +117,7 @@ class GroupDelegate(QStyledItemDelegate):
         preview_font = QFont(option.font)
         preview_font.setPointSize(8)
         painter.setFont(preview_font)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(style.MUTED))
         text = f"{group.member_count} members · {group.preview}"
         painter.drawText(
             QRect(rect.left() + 28, rect.top() + 29, rect.width() - 40, 20),
@@ -140,7 +140,7 @@ class CreateRoomDialog(QDialog):
             "in the invite; messages are fanned out directly, never through a server."
         )
         note.setWordWrap(True)
-        note.setStyleSheet(f"color: {MUTED};")
+        note.setStyleSheet(f"color: {style.MUTED};")
         layout.addWidget(note)
 
         self.name = QLineEdit()
@@ -200,7 +200,7 @@ class JoinRoomDialog(QDialog):
             "the room key and roster; verify the inviter out of band."
         )
         note.setWordWrap(True)
-        note.setStyleSheet(f"color: {MUTED};")
+        note.setStyleSheet(f"color: {style.MUTED};")
         layout.addWidget(note)
         self.invite = QPlainTextEdit()
         self.invite.setPlaceholderText('{"v":1,"group_id":"…","name":"…",…}')
@@ -227,13 +227,24 @@ class RoomWindow(QMainWindow):
     changed = Signal()
     closed = Signal(str)
 
-    def __init__(self, rpc: RpcClient, group: GroupSummary) -> None:
+    def __init__(
+        self,
+        rpc: RpcClient,
+        group: GroupSummary,
+        *,
+        demo_transport: bool = False,
+    ) -> None:
         super().__init__()
         self.rpc = rpc
         self.group = group
+        self.demo_transport = demo_transport
+        self._clipboard_token: str | None = None
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle(f"{group.name} — NCC room")
         self.resize(720, 740)
+        self._clipboard_timer = QTimer(self)
+        self._clipboard_timer.setSingleShot(True)
+        self._clipboard_timer.timeout.connect(self._clear_invite_clipboard)
         self._scroll_timer = QTimer(self)
         self._scroll_timer.setSingleShot(True)
         self._scroll_timer.timeout.connect(self._scroll_to_bottom)
@@ -270,7 +281,7 @@ class RoomWindow(QMainWindow):
         )
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
-        self.empty.setStyleSheet(f"color: {MUTED}; padding: 28px;")
+        self.empty.setStyleSheet(f"color: {style.MUTED}; padding: 28px;")
         layout.addWidget(self.empty)
 
         self.model = MessageListModel()
@@ -297,10 +308,20 @@ class RoomWindow(QMainWindow):
         layout.addWidget(composer_frame)
 
         self.setCentralWidget(root)
-        self.statusBar().showMessage(
-            "Room key lives in your encrypted store · no relay · local history only"
-        )
+        if self.demo_transport:
+            self.statusBar().showMessage("Demo transport: stored locally, not delivered · no relay")
+        else:
+            self.statusBar().showMessage(
+                "Room key lives in your encrypted store · no relay · local history only"
+            )
+        style.theme_changed.connect(self.apply_theme)
+        self.apply_theme()
         self.refresh()
+
+    def apply_theme(self, _key: str = "") -> None:
+        self.setWindowIcon(style.window_icon())
+        self.empty.setStyleSheet(f"color: {style.MUTED}; padding: 28px;")
+        self.view.viewport().update()
 
     def _scroll_to_bottom(self) -> None:
         try:
@@ -339,7 +360,11 @@ class RoomWindow(QMainWindow):
             self.composer.clear()
             delivered = int(result.get("delivered", 0))
             failed = result.get("failed") or []
-            if failed:
+            if self.demo_transport:
+                self.statusBar().showMessage(
+                    "Stored locally · demo transport did not deliver this room message"
+                )
+            elif failed:
                 self.statusBar().showMessage(
                     f"Delivered to {delivered}; failed: {'; '.join(failed)}"
                 )
@@ -357,14 +382,25 @@ class RoomWindow(QMainWindow):
         try:
             invite = self.rpc.call("group.invite", {"group_id": self.group.id})["invite"]
             QApplication.clipboard().setText(invite)
+            self._clipboard_token = invite
+            self._clipboard_timer.start(60_000)
             QMessageBox.information(
                 self,
                 "Room invite copied",
-                "Share this invite out of band. Anyone with it can read and post to the room.",
+                "Share this invite out of band. Anyone with it can read and post to the room. "
+                "It will be cleared from the clipboard in 60 seconds.",
             )
         except RpcError as exc:
             QMessageBox.warning(self, "Cannot create invite", exc.message)
 
+    def _clear_invite_clipboard(self) -> None:
+        clipboard = QApplication.clipboard()
+        if self._clipboard_token is not None and clipboard.text() == self._clipboard_token:
+            clipboard.clear()
+        self._clipboard_token = None
+
     def closeEvent(self, event) -> None:  # noqa: N802
+        self._clipboard_timer.stop()
+        self._clear_invite_clipboard()
         self.closed.emit(self.group.id)
         super().closeEvent(event)

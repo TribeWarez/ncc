@@ -19,8 +19,9 @@ NCC (PySide6 + ncc-daemon) ────────────┘
   a TypeScript wire-compatible client.
 - **NCC** depends on Core's chat/transport/history crates. It does not depend on
   the Nysiris app.
-- **ncc-daemon** is NCC-owned. It owns identity, contacts, crypto, history,
-  network, and outbox; the Python UI only speaks JSON-RPC.
+- **ncc-daemon** is NCC-owned. It owns identity, contacts, crypto, history, and
+  network; the Python UI only speaks JSON-RPC. An encrypted outbox is planned,
+  not implemented.
 
 ## Runtime
 
@@ -67,11 +68,16 @@ Room path:
 
 - No chat service, no server-side message database, no SQLite.
 - Local history is encrypted with XChaCha20-Poly1305 and bound to the hashed
-  conversation filename.
+  conversation filename. Identity/contact/group files are replaced atomically
+  with a previous-generation backup.
 - Contacts and chat identity are sealed local files.
+- Inbound DMs require a saved contact; room messages require a key in the local
+  room roster.
 - Presence is local by default; no broadcast and no central presence service.
 - Groups are client-side fan-out; no relay and no late-join history.
 - No telemetry, no message content in logs, no multi-device sync.
+- One UI instance per user; a second launch activates the existing roster.
+- A torn history tail is quarantined as `*.corrupt` and the valid prefix is kept.
 
 ## Phase 0 scope
 
@@ -81,5 +87,5 @@ transport, JSON-RPC daemon, and a real `nym-sdk` transport behind the `nym`
 feature. The Nym path was verified on mainnet with two native daemons exchanging
 sealed DMs and room messages.
 
-Pending: attachments, OS keychain, tray/notifications, packaging, Android via
-FFI.
+Pending: attachments, OS keychain, tray/notifications, signed releases, Android
+via FFI.

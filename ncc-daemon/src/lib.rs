@@ -6,6 +6,8 @@
 
 #![warn(missing_docs)]
 
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -32,6 +34,7 @@ const IDENTITY_AAD: &[u8] = b"ncc/chat-identity/v1";
 const CONTACTS_AAD: &[u8] = b"ncc/contacts/v1";
 const GROUPS_AAD: &[u8] = b"ncc/groups/v1";
 const DEMO_SEED: [u8; 32] = [7u8; 32];
+const MAX_HISTORY_LIMIT: u64 = 2000;
 
 /// Callback used to push asynchronous JSON-RPC event lines to the UI.
 ///
@@ -242,7 +245,6 @@ impl Daemon {
                 "protocol": 1,
                 "transport": engine.transport_name(),
                 "nym_address": self.nym.as_ref().map(|n| n.address().to_string()),
-                "data_dir": self.data_dir.display().to_string(),
                 "demo": self.demo,
             })),
             "identity.status" => {
@@ -278,7 +280,7 @@ impl Daemon {
             "chat.conversations" => Ok(json!({"conversations": engine.conversations()})),
             "chat.history" => {
                 let peer_pub = required_str(params, "peer_pub")?;
-                let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(200) as usize;
+                let limit = history_limit(params);
                 Ok(json!({"messages": engine.history_for(&peer_pub, limit)}))
             }
             "chat.send" => {
@@ -308,13 +310,13 @@ impl Daemon {
                     .unwrap_or_default();
                 let (group, invite) = engine.create_group(&name, &member_pubkeys)?;
                 save_groups(&self.data_dir, &self.key, engine.groups())?;
-                Ok(json!({"group": group, "invite": invite}))
+                Ok(json!({"group": group_view(&group), "invite": invite}))
             }
             "group.join" => {
                 let invite = required_str(params, "invite")?;
                 let group = engine.join_group(&invite)?;
                 save_groups(&self.data_dir, &self.key, engine.groups())?;
-                Ok(json!({"group": group}))
+                Ok(json!({"group": group_view(&group)}))
             }
             "group.invite" => {
                 let group_id = required_str(params, "group_id")?;
@@ -322,7 +324,7 @@ impl Daemon {
             }
             "group.history" => {
                 let group_id = required_str(params, "group_id")?;
-                let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(200) as usize;
+                let limit = history_limit(params);
                 Ok(json!({"messages": engine.group_history(&group_id, limit)}))
             }
             "group.send" => {
@@ -462,6 +464,120 @@ fn required_str(params: &Value, field: &str) -> Result<String, RpcError> {
         .ok_or_else(|| RpcError::BadRequest(format!("missing string field {field:?}")))
 }
 
+fn history_limit(params: &Value) -> usize {
+    params
+        .get("limit")
+        .and_then(Value::as_u64)
+        .unwrap_or(200)
+        .min(MAX_HISTORY_LIMIT) as usize
+}
+
+/// UI-safe room view: the capability key must never cross the RPC boundary.
+fn group_view(group: &Group) -> Value {
+    json!({
+        "id": group.id,
+        "name": group.name,
+        "member_count": group.members.len(),
+        "members": group.members,
+        "created_at": group.created_at,
+    })
+}
+
+fn read_key_file(path: &Path) -> Result<Option<[u8; 32]>, RpcError> {
+    match std::fs::read_to_string(path) {
+        Ok(value) => {
+            let raw = hex::decode(value.trim())
+                .map_err(|_| RpcError::Internal("dev-master.key is not hex".into()))?;
+            if raw.len() != 32 {
+                return Err(RpcError::Internal(
+                    "dev-master.key must be 32 bytes of hex".into(),
+                ));
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&raw);
+            Ok(Some(key))
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(RpcError::Internal(format!(
+            "cannot read dev-master.key ({err}); refusing to overwrite it"
+        ))),
+    }
+}
+
+fn load_or_create_key_file(path: &Path) -> Result<[u8; 32], RpcError> {
+    if let Some(key) = read_key_file(path)? {
+        return Ok(key);
+    }
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(parent)
+        .map_err(|e| RpcError::Internal(format!("cannot create data dir: {e}")))?;
+
+    let mut key = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut key);
+    let encoded = hex::encode(key);
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(path) {
+        Ok(mut file) => {
+            if let Err(err) = file
+                .write_all(encoded.as_bytes())
+                .and_then(|_| file.sync_all())
+            {
+                drop(file);
+                let _ = std::fs::remove_file(path);
+                return Err(RpcError::Internal(format!(
+                    "cannot write dev-master.key: {err}"
+                )));
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+                if let Ok(directory) = std::fs::File::open(parent) {
+                    let _ = directory.sync_all();
+                }
+            }
+            eprintln!("warning: created a development master key; replace it with the OS keychain");
+            Ok(key)
+        }
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => match read_key_file(path)? {
+            Some(key) => Ok(key),
+            None => Err(RpcError::Internal(
+                "dev-master.key disappeared while opening it".into(),
+            )),
+        },
+        Err(err) => Err(RpcError::Internal(format!(
+            "cannot create dev-master.key: {err}"
+        ))),
+    }
+}
+
+/// Resolve the 32-byte history key from `NCC_MASTER_KEY`, or from the
+/// development key file in `data_dir`. The OS keychain adapter is the next
+/// hardening step.
+pub fn resolve_master_key(data_dir: &Path) -> Result<[u8; 32], RpcError> {
+    if let Ok(value) = std::env::var("NCC_MASTER_KEY") {
+        let raw = hex::decode(value.trim())
+            .map_err(|_| RpcError::BadRequest("NCC_MASTER_KEY is not hex".into()))?;
+        if raw.len() != 32 {
+            return Err(RpcError::BadRequest(
+                "NCC_MASTER_KEY must be 32 bytes of hex".into(),
+            ));
+        }
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&raw);
+        return Ok(key);
+    }
+
+    load_or_create_key_file(&data_dir.join("dev-master.key"))
+}
+
 fn load_or_create_identity(data_dir: &Path, key: &[u8; 32]) -> Result<ChatIdentity, RpcError> {
     let path = data_dir.join(IDENTITY_FILE);
     match read_sealed(&path, key, IDENTITY_AAD) {
@@ -518,56 +634,6 @@ fn save_groups(data_dir: &Path, key: &[u8; 32], groups: &[Group]) -> Result<(), 
         .map_err(|e| RpcError::Internal(format!("cannot write groups: {e}")))
 }
 
-/// Resolve the development master key. Phase 0 uses an explicit env key or a
-/// local `dev-master.key`; the OS keychain adapter is the next hardening step.
-/// Resolve the 32-byte history key from `NCC_MASTER_KEY`, or from the encrypted
-/// key file in `data_dir`.
-pub fn resolve_master_key(data_dir: &Path) -> Result<[u8; 32], RpcError> {
-    if let Ok(value) = std::env::var("NCC_MASTER_KEY") {
-        let raw = hex::decode(value.trim())
-            .map_err(|_| RpcError::BadRequest("NCC_MASTER_KEY is not hex".into()))?;
-        if raw.len() != 32 {
-            return Err(RpcError::BadRequest(
-                "NCC_MASTER_KEY must be 32 bytes of hex".into(),
-            ));
-        }
-        let mut key = [0u8; 32];
-        key.copy_from_slice(&raw);
-        return Ok(key);
-    }
-
-    let path = data_dir.join("dev-master.key");
-    if let Ok(value) = std::fs::read_to_string(&path) {
-        let raw = hex::decode(value.trim())
-            .map_err(|_| RpcError::Internal("dev-master.key is not hex".into()))?;
-        if raw.len() != 32 {
-            return Err(RpcError::Internal(
-                "dev-master.key must be 32 bytes of hex".into(),
-            ));
-        }
-        let mut key = [0u8; 32];
-        key.copy_from_slice(&raw);
-        return Ok(key);
-    }
-
-    let mut key = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut key);
-    std::fs::create_dir_all(data_dir)
-        .map_err(|e| RpcError::Internal(format!("cannot create data dir: {e}")))?;
-    std::fs::write(&path, hex::encode(key))
-        .map_err(|e| RpcError::Internal(format!("cannot write dev-master.key: {e}")))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-    }
-    eprintln!(
-        "warning: using a development master key at {}; replace with the OS keychain",
-        path.display()
-    );
-    Ok(key)
-}
-
 /// Resolve `NCC_DATA_DIR`, or the platform default (`%APPDATA%\NCC` on Windows).
 pub fn default_data_dir() -> PathBuf {
     if let Ok(value) = std::env::var("NCC_DATA_DIR") {
@@ -608,6 +674,51 @@ mod tests {
         assert_eq!(value["result"]["protocol"], 1);
         assert_eq!(value["result"]["transport"], "memory");
         assert_eq!(value["result"]["demo"], true);
+        assert!(value["result"].get("data_dir").is_none());
+    }
+
+    #[test]
+    fn group_rpc_view_never_exposes_the_room_key() {
+        let (mut daemon, _dir) = daemon();
+        let demo_pub = ChatIdentity::from_secret_bytes(DEMO_SEED).public_hex();
+        let line = daemon
+            .handle_line(&format!(
+                r#"{{"id":1,"method":"group.create","params":{{"name":"No Key","member_pubkeys":["{demo_pub}"]}}}}"#
+            ))
+            .unwrap();
+        let value: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(value["result"]["group"]["name"], "No Key");
+        assert!(value["result"]["group"].get("key").is_none());
+        assert!(value["result"]["invite"]
+            .as_str()
+            .unwrap()
+            .contains("No Key"));
+    }
+
+    #[test]
+    fn key_file_is_created_once_and_kept() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("dev-master.key");
+        let first = load_or_create_key_file(&path).unwrap();
+        let second = load_or_create_key_file(&path).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), hex::encode(first));
+    }
+
+    #[test]
+    fn invalid_key_file_is_rejected_without_overwrite() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("dev-master.key");
+        std::fs::write(&path, "not-hex").unwrap();
+        assert!(load_or_create_key_file(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not-hex");
+    }
+
+    #[test]
+    fn history_limit_is_clamped() {
+        assert_eq!(history_limit(&json!({})), 200);
+        assert_eq!(history_limit(&json!({"limit": 999_999})), 2000);
+        assert_eq!(history_limit(&json!({"limit": 50})), 50);
     }
 
     #[test]

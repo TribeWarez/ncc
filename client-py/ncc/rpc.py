@@ -7,9 +7,12 @@ import queue
 import subprocess
 import sys
 import threading
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+MAX_STDERR_LINES = 200
 
 
 class RpcError(Exception):
@@ -51,7 +54,8 @@ class RpcClient:
         self._write_lock = threading.Lock()
         self._next_id = 0
         self._alive = False
-        self._stderr_lines: list[str] = []
+        self.data_dir: str | None = None
+        self._stderr_lines: deque[str] = deque(maxlen=MAX_STDERR_LINES)
         self._events: queue.Queue[dict[str, Any]] = queue.Queue()
 
     @property
@@ -95,8 +99,12 @@ class RpcClient:
                 continue
             if "event" in payload:
                 self._events.put(payload)
-                if self.on_event:
-                    self.on_event(payload)
+                if self.on_event is not None:
+                    try:
+                        self.on_event(payload)
+                    except Exception:
+                        # A UI callback must not stop the reader thread.
+                        pass
                 continue
             request_id = payload.get("id")
             if not isinstance(request_id, int):
@@ -117,10 +125,15 @@ class RpcClient:
 
     def _emit_stderr(self, line: str) -> None:
         self._stderr_lines.append(line)
-        if self.on_stderr:
-            self.on_stderr(line)
-        else:
-            print(f"[ncc-daemon] {line}", file=sys.stderr)
+        try:
+            if self.on_stderr is not None:
+                self.on_stderr(line)
+            elif sys.stderr is not None:
+                print(f"[ncc-daemon] {line}", file=sys.stderr)
+        except Exception:
+            # Packaged windowed apps may have no usable stderr, and a custom
+            # sink must never kill the pipe reader.
+            pass
 
     def _mark_dead(self, reason: str) -> None:
         self._alive = False

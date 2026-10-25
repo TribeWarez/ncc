@@ -46,14 +46,14 @@ def main() -> int:
         return 2
 
     run(CORE, "cargo", "fmt", "--check")
-    run(CORE, "cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings")
-    run(CORE, "cargo", "test", "--workspace")
+    run(CORE, "cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings")
+    run(CORE, "cargo", "test", "--workspace", "--locked")
 
     run(DAEMON, "cargo", "fmt", "--check")
-    run(DAEMON, "cargo", "clippy", "--all-targets", "--", "-D", "warnings")
-    run(DAEMON, "cargo", "test")
+    run(DAEMON, "cargo", "clippy", "--all-targets", "--locked", "--", "-D", "warnings")
+    run(DAEMON, "cargo", "test", "--locked")
     if args.nym:
-        run(DAEMON, "cargo", "check", "--features", "nym")
+        run(DAEMON, "cargo", "check", "--features", "nym", "--locked")
 
     python = venv_python()
     run(CLIENT, str(python), "-m", "ruff", "check", ".")

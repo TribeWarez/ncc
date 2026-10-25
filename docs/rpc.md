@@ -34,7 +34,7 @@ The Qt client drains them through `RpcClient.pop_events()`.
 
 | Method | Params | Result |
 |---|---|---|
-| `core.hello` | `{}` | `{name, version, protocol, transport, nym_address, data_dir, demo}` |
+| `core.hello` | `{}` | `{name, version, protocol, transport, nym_address, demo}` |
 | `identity.status` | `{}` | `{pubkey, nym_address, transport, status}` |
 | `contact.list` | `{}` | `{contacts: Contact[]}` |
 | `contact.add` | `{petname, pubkey, nym_address}` | `{contact}` |
@@ -80,11 +80,19 @@ The Qt client drains them through `RpcClient.pop_events()`.
 }
 ```
 
-`group.create` selects saved contacts by public key. The returned `invite` is a
-signed JSON capability containing the room key and roster; share it out of band.
-`group.join` verifies the invite signature and requires this chat identity to be
-in the member list. Messages use `conversation_id = "group:<gid>"`, and inbound
-room events arrive through the same `message` event.
+`group.create` selects saved contacts by public key. The returned `group` is a
+UI-safe view without the capability key; only the signed `invite` carries the
+room key and roster, and it must be shared out of band. `group.join` verifies
+the invite signature and requires this chat identity to be in the member list.
+Messages use `conversation_id = "group:<gid>"`, and inbound room events arrive
+through the same `message` event.
+
+Inbound DMs are accepted only from saved contacts. Inbound room messages are
+accepted only from keys in the local room roster. Other payloads are rejected
+before history is written.
+
+`chat.history` and `group.history` accept an optional `limit`; the daemon caps
+it at 2000 records per request.
 
 ## Error codes
 
@@ -108,8 +116,9 @@ room events arrive through the same `message` event.
 | `NCC_DEMO` | `1` seeds the demo contact and enables `debug.inject` |
 | `NCC_NYM_GATEWAY` | optional Nym entry-gateway identity key |
 
-`dev-master.key` is a development fallback. Replace it with the OS keychain
-before shipping.
+`dev-master.key` is a development fallback. It is created atomically and never
+overwritten when unreadable or malformed. Replace it with the OS keychain before
+shipping.
 
 `--transport nym` requires an `ncc-daemon` built with `--features nym`; without
 it the daemon fails explicitly at startup.

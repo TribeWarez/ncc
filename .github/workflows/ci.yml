@@ -43,4 +43,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Check nym feature
         working-directory: ncc-daemon
-        run: cargo check --features nym
+        run: cargo check --features nym --locked

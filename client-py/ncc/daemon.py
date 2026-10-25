@@ -53,6 +53,24 @@ def find_daemon(explicit: str | None = None) -> Path:
     )
 
 
+def default_data_dir() -> str:
+    """Mirror the daemon's default data directory without asking it over RPC."""
+    override = os.environ.get("NCC_DATA_DIR")
+    if override:
+        return override
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return str(Path(appdata) / "NCC")
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        return str(Path(xdg) / "ncc")
+    home = os.environ.get("HOME")
+    if home:
+        return str(Path(home) / ".local" / "share" / "ncc")
+    return str(Path("ncc-data"))
+
+
 def start_daemon(
     *,
     explicit: str | None = None,
@@ -61,16 +79,17 @@ def start_daemon(
     demo: bool = True,
 ) -> RpcClient:
     daemon = find_daemon(explicit)
+    effective_data_dir = data_dir or default_data_dir()
     command = [str(daemon)]
-    if data_dir:
-        command.extend(["--data-dir", data_dir])
+    command.extend(["--data-dir", effective_data_dir])
     command.extend(["--transport", transport])
     if demo:
         command.append("--demo")
     env = os.environ.copy()
-    if data_dir:
-        env["NCC_DATA_DIR"] = data_dir
+    env["NCC_DATA_DIR"] = effective_data_dir
     env["NCC_TRANSPORT"] = transport
     if demo:
         env["NCC_DEMO"] = "1"
-    return RpcClient(command, env=env)
+    client = RpcClient(command, env=env)
+    client.data_dir = effective_data_dir
+    return client

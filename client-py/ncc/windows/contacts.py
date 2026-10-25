@@ -6,8 +6,8 @@ from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
+from .. import style
 from ..models import ContactRow, short_address
-from ..style import ACCENT, INK, LINE, MUTED, SURFACE_2
 
 
 class ContactListModel(QAbstractListModel):
@@ -56,18 +56,18 @@ class ContactDelegate(QStyledItemDelegate):
         selected = bool(option.state & QStyle.StateFlag.State_Selected)
         hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
         if selected or hovered:
-            painter.setPen(QPen(QColor(LINE), 1))
-            painter.setBrush(QColor(SURFACE_2))
+            painter.setPen(QPen(QColor(style.LINE), 1))
+            painter.setBrush(QColor(style.SURFACE_2))
             painter.drawRoundedRect(rect, 4, 4)
         if selected:
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(ACCENT))
+            painter.setBrush(QColor(style.ACCENT))
             painter.drawRect(QRect(rect.left(), rect.top() + 6, 3, rect.height() - 12))
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         # Presence is not available from Nym. The dot is intentionally muted.
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(MUTED))
+        painter.setBrush(QColor(style.MUTED))
         painter.drawEllipse(rect.left() + 12, rect.top() + 15, 7, 7)
 
         name_rect = QRect(rect.left() + 28, rect.top() + 7, rect.width() - 80, 20)
@@ -75,7 +75,7 @@ class ContactDelegate(QStyledItemDelegate):
         name_font.setBold(True)
         name_font.setPointSize(max(9, name_font.pointSize()))
         painter.setFont(name_font)
-        painter.setPen(QColor(INK))
+        painter.setPen(QColor(style.INK))
         painter.drawText(
             name_rect,
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -87,7 +87,7 @@ class ContactDelegate(QStyledItemDelegate):
         time_font = QFont(option.font)
         time_font.setPointSize(8)
         painter.setFont(time_font)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(style.MUTED))
         painter.drawText(
             QRect(rect.right() - 66, rect.top() + 8, 60, 18),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -98,7 +98,7 @@ class ContactDelegate(QStyledItemDelegate):
         preview_font = QFont(option.font)
         preview_font.setPointSize(8)
         painter.setFont(preview_font)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(style.MUTED))
         painter.drawText(
             QRect(rect.left() + 28, rect.top() + 30, rect.width() - 40, 20),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,

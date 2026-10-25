@@ -24,10 +24,28 @@ py -3.13 -m venv .venv
 
 The demo uses the in-memory transport and seeds one local contact and one room.
 Messages are still written to the encrypted local history journal; there is no
-server and no SQLite.
+server and no SQLite. The in-memory transport does not deliver messages, so the
+roster, chat, and room windows show a persistent demo-transport warning.
 
 Rooms are created from contacts (`+ Room`) and joined by pasting a signed invite
 JSON (`Join`). A room window can copy its invite for another client.
+
+## Themes
+
+Settings → Appearance switches between four built-in themes:
+
+| Theme | Key | Default |
+|---|---|---|
+| Cyborg 98 | `cyborg_98` | yes |
+| Aero 2007 | `aero_2007` | |
+| Aero Cyborg | `aero_cyborg` | |
+| Flame Fury 2003 | `flame_fury_2003` | |
+
+A theme sets the palette, the window icon, and the logo in the roster's
+top-right corner. Artwork lives in the repository `res/` directory and is
+bundled into the frozen release. The choice is stored as a non-secret `theme`
+value in `settings.json` under the NCC data directory; message content is never
+written there.
 
 ## Real Nym transport
 

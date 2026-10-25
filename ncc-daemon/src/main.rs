@@ -41,10 +41,7 @@ fn main() {
         index += 1;
     }
 
-    eprintln!(
-        "ncc-daemon: transport={transport} demo={demo} data_dir={}",
-        data_dir.display()
-    );
+    eprintln!("ncc-daemon: transport={transport} demo={demo}");
     let key = match resolve_master_key(&data_dir) {
         Ok(key) => key,
         Err(err) => {

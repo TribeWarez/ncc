@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QModelIndex, QTimer
+from PySide6.QtCore import QModelIndex, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import style
 from ..models import Contact, ContactRow, Conversation, GroupSummary, Message, short_hex
 from ..rpc import RpcClient, RpcError
 from .chat import ChatWindow
@@ -42,19 +43,28 @@ STATUSES = [
 
 
 class RosterWindow(QMainWindow):
-    def __init__(self, rpc: RpcClient, hello: dict, *, demo: bool = False) -> None:
+    def __init__(
+        self,
+        rpc: RpcClient,
+        hello: dict,
+        *,
+        demo: bool = False,
+        data_dir: str | None = None,
+    ) -> None:
         super().__init__()
         self.rpc = rpc
         self.hello = hello
         self.demo = demo or bool(hello.get("demo"))
+        self.demo_transport = str(hello.get("transport", "")).lower() in {"mock", "memory"}
         self.contacts: list[Contact] = []
         self.conversations: dict[str, Conversation] = {}
         self.groups: list[GroupSummary] = []
         self.chats: dict[str, ChatWindow] = {}
         self.rooms: dict[str, RoomWindow] = {}
         self.identity: dict = {}
+        self.data_dir = str(data_dir or hello.get("data_dir") or "")
         self.setWindowTitle("NCC — Nysiris Chat Commander")
-        self.resize(400, 760)
+        self.resize(420, 780)
 
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -63,19 +73,37 @@ class RosterWindow(QMainWindow):
 
         header = QFrame()
         header.setObjectName("header")
-        header_layout = QVBoxLayout(header)
+        header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(10, 8, 10, 8)
-        header_layout.setSpacing(1)
+        header_layout.setSpacing(10)
+        title_box = QVBoxLayout()
+        title_box.setSpacing(1)
         title = QLabel("NCC")
         title.setObjectName("title")
         subtitle = QLabel("Nysiris Chat Commander")
         subtitle.setObjectName("subtitle")
         self.identity_label = QLabel("starting…")
         self.identity_label.setObjectName("identity")
-        header_layout.addWidget(title)
-        header_layout.addWidget(subtitle)
-        header_layout.addWidget(self.identity_label)
+        self.identity_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.identity_label.setWordWrap(True)
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        title_box.addWidget(self.identity_label)
+        header_layout.addLayout(title_box, 1)
+        self.logo = QLabel()
+        self.logo.setObjectName("logo")
+        self.logo.setFixedSize(88, 88)
+        self.logo.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        header_layout.addWidget(self.logo, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(header)
+
+        self.demo_banner = QLabel(
+            "Demo transport: messages are encrypted into local history but are not delivered."
+        )
+        self.demo_banner.setObjectName("warning")
+        self.demo_banner.setWordWrap(True)
+        self.demo_banner.setVisible(self.demo_transport)
+        layout.addWidget(self.demo_banner)
 
         status_row = QHBoxLayout()
         status_row.setSpacing(8)
@@ -152,11 +180,24 @@ class RosterWindow(QMainWindow):
 
         self.setCentralWidget(root)
         self.statusBar().showMessage("No server mailbox · encrypted local history")
+        style.theme_changed.connect(self._apply_theme)
+        self._apply_theme()
         self._event_timer = QTimer(self)
         self._event_timer.setInterval(250)
         self._event_timer.timeout.connect(self._drain_events)
         self._event_timer.start()
         self.refresh()
+
+    def _apply_theme(self, _key: str = "") -> None:
+        theme = style.current()
+        ratio = self.logo.devicePixelRatioF() or 1.0
+        pixmap = style.logo_pixmap(theme.key, self.logo.width(), ratio)
+        if not pixmap.isNull():
+            self.logo.setPixmap(pixmap)
+        self.logo.setToolTip(f"{theme.label} theme")
+        self.setWindowIcon(style.window_icon(theme.key))
+        self.view.viewport().update()
+        self.group_view.viewport().update()
 
     def refresh(self) -> None:
         try:
@@ -229,7 +270,7 @@ class RosterWindow(QMainWindow):
             existing.raise_()
             existing.activateWindow()
             return
-        room = RoomWindow(self.rpc, group)
+        room = RoomWindow(self.rpc, group, demo_transport=self.demo_transport)
         room.changed.connect(self.refresh)
         room.closed.connect(self._on_room_closed)
         self.rooms[group.id] = room
@@ -275,7 +316,7 @@ class RosterWindow(QMainWindow):
             existing.raise_()
             existing.activateWindow()
             return
-        chat = ChatWindow(self.rpc, contact, demo=self.demo)
+        chat = ChatWindow(self.rpc, contact, demo=self.demo, demo_transport=self.demo_transport)
         chat.changed.connect(self.refresh)
         chat.closed.connect(self._on_chat_closed)
         self.chats[contact.pubkey] = chat
@@ -299,7 +340,13 @@ class RosterWindow(QMainWindow):
             QMessageBox.warning(self, "Cannot save contact", exc.message)
 
     def open_settings(self) -> None:
-        SettingsDialog(self.rpc, self.hello, self.identity, self).exec()
+        SettingsDialog(
+            self.rpc,
+            self.hello,
+            self.identity,
+            self,
+            data_dir=self.data_dir,
+        ).exec()
         self.refresh()
         for chat in self.chats.values():
             chat.refresh()

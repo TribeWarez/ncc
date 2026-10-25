@@ -23,9 +23,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import style
 from ..models import Contact, Message, short_address, short_hex
 from ..rpc import RpcClient, RpcError
-from ..style import ACCENT_DARK, BAD, INK, LINE, MUTED, SURFACE_2
 
 
 class MessageListModel(QAbstractListModel):
@@ -115,8 +115,8 @@ class MessageDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        background = QColor(ACCENT_DARK) if message.outgoing else QColor(SURFACE_2)
-        border = QColor(ACCENT_DARK if message.outgoing else LINE)
+        background = QColor(style.ACCENT_DARK) if message.outgoing else QColor(style.SURFACE_2)
+        border = QColor(style.ACCENT_DARK if message.outgoing else style.LINE)
         painter.setBrush(background)
         painter.setPen(QPen(border, 1))
         painter.drawRoundedRect(bubble, 9, 9)
@@ -131,7 +131,7 @@ class MessageDelegate(QStyledItemDelegate):
             sender_font.setPointSize(8)
             sender_font.setBold(True)
             painter.setFont(sender_font)
-            painter.setPen(QColor("#ffb37a"))
+            painter.setPen(QColor(style.SENDER))
             painter.drawText(
                 QRect(bubble.left() + 13, bubble.top() + 5, bubble.width() - 26, 12),
                 int(Qt.AlignmentFlag.AlignLeft) | int(Qt.AlignmentFlag.AlignVCenter),
@@ -139,7 +139,7 @@ class MessageDelegate(QStyledItemDelegate):
             )
 
         painter.setFont(option.font)
-        painter.setPen(QColor("#ffffff" if message.outgoing else INK))
+        painter.setPen(QColor(style.OUTGOING_INK if message.outgoing else style.INK))
         painter.drawText(
             text_rect,
             int(Qt.TextFlag.TextWordWrap) | int(Qt.AlignmentFlag.AlignLeft)
@@ -150,11 +150,11 @@ class MessageDelegate(QStyledItemDelegate):
         small = QFont(option.font)
         small.setPointSize(8)
         painter.setFont(small)
-        painter.setPen(QColor("#ffd7bd" if message.outgoing else MUTED))
+        painter.setPen(QColor(style.OUTGOING_META if message.outgoing else style.MUTED))
         timestamp = message.time_label
         if message.state == "failed":
             timestamp = f"{timestamp} · failed"
-            painter.setPen(QColor(BAD))
+            painter.setPen(QColor(style.BAD))
         painter.drawText(
             QRect(bubble.left() + 10, bubble.bottom() - 17, bubble.width() - 20, 14),
             int(Qt.AlignmentFlag.AlignRight) | int(Qt.AlignmentFlag.AlignVCenter),
@@ -185,11 +185,19 @@ class ChatWindow(QMainWindow):
     changed = Signal()
     closed = Signal(str)
 
-    def __init__(self, rpc: RpcClient, contact: Contact, *, demo: bool = False) -> None:
+    def __init__(
+        self,
+        rpc: RpcClient,
+        contact: Contact,
+        *,
+        demo: bool = False,
+        demo_transport: bool = False,
+    ) -> None:
         super().__init__()
         self.rpc = rpc
         self.contact = contact
         self.demo = demo
+        self.demo_transport = demo_transport
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle(f"{contact.petname} — NCC")
         self.resize(680, 720)
@@ -224,7 +232,6 @@ class ChatWindow(QMainWindow):
         )
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setWordWrap(True)
-        self.empty.setStyleSheet(f"color: {MUTED}; padding: 28px;")
         layout.addWidget(self.empty)
 
         self.model = MessageListModel()
@@ -252,8 +259,20 @@ class ChatWindow(QMainWindow):
         layout.addWidget(composer_frame)
 
         self.setCentralWidget(root)
-        self.statusBar().showMessage("Local-only history · no server mailbox")
+        if self.demo_transport:
+            self.statusBar().showMessage(
+                "Demo transport: stored locally, not delivered · no server mailbox"
+            )
+        else:
+            self.statusBar().showMessage("Local-only history · no server mailbox")
+        style.theme_changed.connect(self.apply_theme)
+        self.apply_theme()
         self.refresh()
+
+    def apply_theme(self, _key: str = "") -> None:
+        self.setWindowIcon(style.window_icon())
+        self.empty.setStyleSheet(f"color: {style.MUTED}; padding: 28px;")
+        self.view.viewport().update()
 
     def _scroll_to_bottom(self) -> None:
         try:
@@ -291,6 +310,10 @@ class ChatWindow(QMainWindow):
             self.empty.setVisible(False)
             self.view.setVisible(True)
             self.composer.clear()
+            if self.demo_transport:
+                self.statusBar().showMessage(
+                    "Stored locally · demo transport did not deliver this message"
+                )
             self.changed.emit()
             self._scroll_timer.start(0)
         except RpcError as exc:

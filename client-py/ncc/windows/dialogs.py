@@ -7,6 +7,8 @@ import re
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -18,8 +20,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import style
 from ..rpc import RpcClient, RpcError
-from ..style import MUTED
 
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -35,7 +37,7 @@ class AddContactDialog(QDialog):
             "There is no directory; both values must come from them out of band."
         )
         note.setWordWrap(True)
-        note.setStyleSheet(f"color: {MUTED};")
+        note.setStyleSheet(f"color: {style.MUTED};")
         layout.addWidget(note)
 
         form = QFormLayout()
@@ -94,12 +96,46 @@ class SettingsDialog(QDialog):
         hello: dict,
         identity: dict,
         parent: QWidget | None = None,
+        *,
+        data_dir: str = "",
     ) -> None:
         super().__init__(parent)
         self.rpc = rpc
+        self.data_dir = data_dir or str(hello.get("data_dir") or "")
         self.setWindowTitle("NCC settings")
         self.setMinimumWidth(620)
         layout = QVBoxLayout(self)
+
+        appearance = QLabel("Appearance")
+        appearance_font = appearance.font()
+        appearance_font.setPointSize(14)
+        appearance_font.setBold(True)
+        appearance.setFont(appearance_font)
+        layout.addWidget(appearance)
+
+        theme_form = QFormLayout()
+        self.theme_combo = QComboBox()
+        for key, theme in style.THEMES.items():
+            self.theme_combo.addItem(theme.label, key)
+        current_index = self.theme_combo.findData(style.current().key)
+        if current_index >= 0:
+            self.theme_combo.setCurrentIndex(current_index)
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        theme_form.addRow("Theme colors", self.theme_combo)
+        layout.addLayout(theme_form)
+
+        self.swatch = QLabel()
+        self.swatch.setFixedHeight(10)
+        layout.addWidget(self.swatch)
+        self._refresh_swatch()
+
+        theme_note = QLabel(
+            "Themes apply immediately and also change the window icon and roster logo. "
+            "Only the theme name is saved to settings.json; no message content is stored there."
+        )
+        theme_note.setWordWrap(True)
+        theme_note.setStyleSheet(f"color: {style.MUTED};")
+        layout.addWidget(theme_note)
 
         heading = QLabel("Identity and storage")
         font = heading.font()
@@ -110,7 +146,7 @@ class SettingsDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Transport", self._value(str(hello.get("transport", "?"))))
-        form.addRow("Data directory", self._value(str(hello.get("data_dir", "?"))))
+        form.addRow("Data directory", self._value(self.data_dir or "?"))
         form.addRow("Chat public key", self._value(str(identity.get("pubkey", "?"))))
         form.addRow("Nym address", self._value(str(identity.get("nym_address", "?"))))
         layout.addLayout(form)
@@ -121,7 +157,7 @@ class SettingsDialog(QDialog):
             "multi-device sync."
         )
         privacy.setWordWrap(True)
-        privacy.setStyleSheet(f"color: {MUTED};")
+        privacy.setStyleSheet(f"color: {style.MUTED};")
         layout.addWidget(privacy)
 
         clear = QPushButton("Clear all local history")
@@ -137,10 +173,26 @@ class SettingsDialog(QDialog):
     @staticmethod
     def _value(text: str) -> QLabel:
         label = QLabel(text)
+        label.setTextFormat(Qt.TextFormat.PlainText)
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         label.setWordWrap(True)
         label.setStyleSheet("font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px;")
         return label
+
+    def _on_theme_changed(self, _index: int) -> None:
+        key = str(self.theme_combo.currentData() or style.DEFAULT_THEME)
+        style.apply_theme(QApplication.instance(), key)
+        style.save_theme(self.data_dir, key)
+        self._refresh_swatch()
+
+    def _refresh_swatch(self) -> None:
+        theme = style.current()
+        self.swatch.setStyleSheet(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+            f"stop:0 {theme.accent}, stop:0.5 {theme.accent_dark}, "
+            f"stop:1 {theme.surface_2}); "
+            f"border: 1px solid {theme.line}; border-radius: 3px;"
+        )
 
     def _clear_history(self) -> None:
         answer = QMessageBox.question(

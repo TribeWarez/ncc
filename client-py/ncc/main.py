@@ -10,7 +10,8 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .daemon import start_daemon
 from .rpc import RpcError
-from .style import apply_theme
+from .single_instance import SingleInstance
+from .style import apply_theme, load_saved_theme
 from .windows.roster import RosterWindow
 
 
@@ -41,6 +42,10 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("NCC")
     app.setOrganizationName("Nysiris")
+    instance = SingleInstance()
+    if not instance.try_acquire():
+        return 0
+    app.aboutToQuit.connect(instance.close)
     apply_theme(app)
 
     rpc = None
@@ -53,7 +58,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         rpc.start()
         hello = rpc.call("core.hello", timeout=200)
-        window = RosterWindow(rpc, hello, demo=args.demo)
+        apply_theme(app, load_saved_theme(rpc.data_dir or args.data_dir))
+        window = RosterWindow(rpc, hello, demo=args.demo, data_dir=rpc.data_dir)
+        instance.attach(window)
         window.show()
         app.aboutToQuit.connect(rpc.close)
         return app.exec()

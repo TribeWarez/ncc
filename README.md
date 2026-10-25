@@ -58,12 +58,13 @@ anywhere, and run `ncc.exe`.
   crypto, history, and transport.
 - `client-py`: PySide6 roster, native chat windows, rooms, contact dialog,
   settings, encrypted-history note, local-only status selector, demo incoming
-  messages.
+  messages, and four switchable themes (Cyborg 98 default) with per-theme
+  window icons and roster logo.
 - **Rooms** with signed capability-key invites, local rosters, client-side
   fan-out, room history, and a native room window. No relay and no server
   room state.
 - **Native Nym transport** behind `--features nym`: real mainnet connect,
-  sealed DM/room send/receive, SURB replies, and inbound event push to the UI.
+  sealed DM/room send/receive, attached reply SURBs, and inbound event push to the UI.
   Verified with two native daemons exchanging DMs and room messages in both
   directions.
 
@@ -100,7 +101,9 @@ py -3.13 -m venv .venv
 ```
 
 The demo still uses the real encrypted local history journal. The seeding only
-adds a local contact and a welcome message; it does not create a server.
+adds a local contact and a welcome message; it does not create a server. The
+in-memory transport does not deliver messages, and the roster and chat windows
+show a persistent demo-transport warning.
 
 ## Real Nym transport
 
@@ -189,9 +192,9 @@ metadata to gateways; NCC does not claim otherwise.
 ## Status and limitations
 
 - Native Nym transport works behind `--features nym`, including live mainnet
-  delivery, SURB replies, and room fan-out. The default build stays on the mock
+  delivery, attached reply SURBs, and room fan-out. The default build stays on the mock
   transport.
-- Attachments, tray notifications, OS keychain, packaging, and multi-device
+- Attachments, tray notifications, OS keychain, signed releases, and multi-device
   sync are not implemented yet.
 - `dev-master.key` is a development fallback for encrypting local identity,
   contacts, and history. Replace it with the OS keychain before shipping.
