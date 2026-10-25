@@ -4,6 +4,8 @@
 //! history, and transport. The PySide6 UI must not implement crypto or open
 //! the history files.
 
+#![warn(missing_docs)]
+
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -31,27 +33,41 @@ const CONTACTS_AAD: &[u8] = b"ncc/contacts/v1";
 const GROUPS_AAD: &[u8] = b"ncc/groups/v1";
 const DEMO_SEED: [u8; 32] = [7u8; 32];
 
+/// Callback used to push asynchronous JSON-RPC event lines to the UI.
+///
+/// The daemon calls it from worker threads; the Python side reads the resulting
+/// lines from stdout, so the sink must not block for long.
 pub type EventSink = Arc<dyn Fn(String) + Send + Sync>;
 
+/// One line-delimited JSON-RPC 2.0-style request.
 #[derive(Debug, Deserialize)]
 pub struct RpcRequest {
+    /// Request id echoed in the response; missing ids become `null`.
     #[serde(default)]
     pub id: Value,
+    /// Method name, for example `dm.send` or `group.create`.
     pub method: String,
+    /// Method arguments; an empty object when omitted.
     #[serde(default)]
     pub params: Value,
 }
 
+/// Error categories surfaced to the UI as JSON-RPC `error.code`.
 #[derive(Debug, thiserror::Error)]
 pub enum RpcError {
+    /// Malformed request or invalid input.
     #[error("{0}")]
     BadRequest(String),
+    /// Unknown contact, message, or room.
     #[error("{0}")]
     NotFound(String),
+    /// The transport could not accept the payload.
     #[error("{0}")]
     Transport(String),
+    /// Identity, sealing, or signature failure.
     #[error("{0}")]
     Crypto(String),
+    /// Local storage or another unexpected internal failure.
     #[error("{0}")]
     Internal(String),
 }
@@ -82,6 +98,10 @@ impl From<CoreError> for RpcError {
     }
 }
 
+/// The sidecar state: identity, contacts, rooms, history, and transport.
+///
+/// Create it with [`Daemon::new`], feed one line at a time to
+/// [`Daemon::handle_line`], and call [`Daemon::shutdown`] before exit.
 pub struct Daemon {
     data_dir: PathBuf,
     key: [u8; 32],
@@ -92,6 +112,12 @@ pub struct Daemon {
 }
 
 impl Daemon {
+    /// Open (or create) the daemon state under `data_dir`.
+    ///
+    /// `key` is the 32-byte history-encryption key. `transport_kind` is
+    /// `"memory"` for the demo transport or `"nym"` for the real adapter;
+    /// `demo` seeds a local contact and room, and `event_sink` receives
+    /// asynchronous event lines pushed to the UI.
     pub fn new(
         data_dir: impl AsRef<Path>,
         key: [u8; 32],
@@ -159,14 +185,17 @@ impl Daemon {
         })
     }
 
+    /// The directory holding the encrypted identity, contacts, groups, and history.
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
     }
 
+    /// Whether a `quit`/`shutdown` request asked the process to exit.
     pub fn should_exit(&self) -> bool {
         self.should_exit
     }
 
+    /// Stop the Nym transport, if one is running.
     pub fn shutdown(&self) {
         if let Some(nym) = &self.nym {
             nym.shutdown();
@@ -491,6 +520,8 @@ fn save_groups(data_dir: &Path, key: &[u8; 32], groups: &[Group]) -> Result<(), 
 
 /// Resolve the development master key. Phase 0 uses an explicit env key or a
 /// local `dev-master.key`; the OS keychain adapter is the next hardening step.
+/// Resolve the 32-byte history key from `NCC_MASTER_KEY`, or from the encrypted
+/// key file in `data_dir`.
 pub fn resolve_master_key(data_dir: &Path) -> Result<[u8; 32], RpcError> {
     if let Ok(value) = std::env::var("NCC_MASTER_KEY") {
         let raw = hex::decode(value.trim())
@@ -537,6 +568,7 @@ pub fn resolve_master_key(data_dir: &Path) -> Result<[u8; 32], RpcError> {
     Ok(key)
 }
 
+/// Resolve `NCC_DATA_DIR`, or the platform default (`%APPDATA%\NCC` on Windows).
 pub fn default_data_dir() -> PathBuf {
     if let Ok(value) = std::env::var("NCC_DATA_DIR") {
         return PathBuf::from(value);

@@ -7,7 +7,21 @@ service.
 NCC is a client. Nysiris remains the PWA/Electron/Tauri product for portals,
 social/timeline, and service hosting. The shared Rust layer is
 [`Nysiris-Core`](https://github.com/TribeWarez/nysiris-core), pinned here as
-the `core/` submodule.
+the `core/` submodule (`v0.1.2`) and published on crates.io.
+
+| Crate | crates.io | Docs |
+|---|---|---|
+| `nysiris-core` | [0.1.x](https://crates.io/crates/nysiris-core) | [docs.rs](https://docs.rs/nysiris-core) |
+| `nysiris-chat-core` | [0.1.x](https://crates.io/crates/nysiris-chat-core) | [docs.rs](https://docs.rs/nysiris-chat-core) |
+| `nysiris-chat-history` | [0.1.x](https://crates.io/crates/nysiris-chat-history) | [docs.rs](https://docs.rs/nysiris-chat-history) |
+| `nysiris-transport-nym` | [0.1.x](https://crates.io/crates/nysiris-transport-nym) | [docs.rs](https://docs.rs/nysiris-transport-nym) |
+| `nysiris-testkit` | [0.1.x](https://crates.io/crates/nysiris-testkit) | [docs.rs](https://docs.rs/nysiris-testkit) |
+| `ncc-daemon` | not published (`publish = false`) | [`ncc-daemon/README.md`](ncc-daemon/README.md) |
+
+`ncc-daemon` is NCC-owned and intentionally not on crates.io: it is the binary
+sidecar, not a reusable library. The reusable protocol lives in Core, where
+every public item is documented (`#![warn(missing_docs)]`, docs built with
+`-D warnings`).
 
 ```text
 Nysiris PWA ──wire──► Nysiris services ──► Nysiris-Core
@@ -100,14 +114,16 @@ resolved; both lockfiles pin the known-good 1.22.0 set. Do not run
 # Rust core
 cd core
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo doc --workspace --no-deps --locked
 
 # Daemon
 cd ..\ncc-daemon
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+cargo doc --no-deps --locked
 
 # UI
 cd ..\client-py
@@ -135,6 +151,7 @@ metadata to gateways; NCC does not claim otherwise.
 
 ## Docs
 
+- `ncc-daemon/README.md` — sidecar runtime, configuration, and JSON-RPC entry point.
 - `docs/architecture.md` — boundaries, runtime, message path, privacy decisions.
 - `docs/nym-transport.md` — feature build, runtime shape, live test, lock pin.
 - `docs/rpc.md` — ncc-daemon JSON-RPC methods, groups, events, error codes.

@@ -3,6 +3,13 @@
 Line-delimited JSON-RPC sidecar for the NCC PySide6 client. It owns the chat
 identity, contacts, sealed DM crypto, encrypted history, and transport.
 
+`ncc-daemon` is **not published to crates.io** (`publish = false`): it is the
+NCC binary sidecar, not a reusable library. The reusable protocol lives in
+[Nysiris-Core](https://github.com/TribeWarez/nysiris-core), published as
+`nysiris-core`, `nysiris-chat-core`, `nysiris-chat-history`,
+`nysiris-transport-nym`, and `nysiris-testkit`. Every public item there carries
+rustdoc (`#![warn(missing_docs)]`, docs built with `-D warnings`).
+
 ## Run
 
 Mock transport (default, no network):
@@ -46,6 +53,9 @@ Rooms are capability-key groups: `group.create` returns a signed invite,
 `group.join` imports it, and `group.send` fans out one sealed copy per member.
 There is no relay and no server room state.
 
+Errors use the codes `bad_request`, `not_found`, `transport`, `crypto`, and
+`internal`.
+
 ## Environment
 
 | Variable | Meaning |
@@ -66,9 +76,9 @@ building and testing `--features nym` again.
 ## Test
 
 ```powershell
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo check --features nym
+cargo test --locked
+cargo clippy --all-targets --locked -- -D warnings
+cargo check --features nym --locked
 ```
 
 Live mainnet test from `client-py`:

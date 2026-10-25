@@ -6,14 +6,16 @@ license = "Apache-2.0"
 repository = "https://github.com/TribeWarez/ncc"
 publish = false
 description = "JSON-RPC sidecar for the NCC PySide6 client. Owns identity, crypto, history, and transport."
+readme = "README.md"
 
 [features]
 default = []
 nym = ["nysiris-transport-nym/nym"]
 
 [dependencies]
-# Nysiris-Core is the `core/` git submodule. Switch these to crates.io versions
-# when the first Core release is published.
+# Nysiris-Core is the `core/` git submodule, pinned to a release tag. The crates
+# are also on crates.io (0.1.x); keep the path deps so NCC builds the exact
+# source it pins while protocol work is in flight.
 nysiris-core = { path = "../core/crates/nysiris-core" }
 nysiris-chat-core = { path = "../core/crates/nysiris-chat-core" }
 nysiris-chat-history = { path = "../core/crates/nysiris-chat-history" }
